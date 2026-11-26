@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>성대역 자율주행 · 13조</title>
+<meta name="description" content="성균관대역 일대 실제 도로를 SUMO로 구현하고, 그 위에서 PPO로 학습한 자율주행 차량(AV)이 일반 차량과 함께 목적지까지 주행하는 프로젝트">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  /* 디자인: 따뜻한 크림 바탕 + 녹색 4단계 + 알약 버튼 + 얕은 겹그림자 (awesome-design-md 'starbucks' DESIGN.md 참고, 브랜드 요소는 쓰지 않음) */
+  :root {
+    --green: #006241;        /* 제목 */
+    --green-accent: #00754A; /* 버튼·강조 */
+    --green-house: #1E3932;  /* 어두운 띠·바닥글 */
+    --green-uplift: #2b5148;
+    --green-light: #d4e9e2;
+    --gold: #cba258;
+    --cream: #f2f0eb;
+    --ceramic: #edebe9;
+    --white: #ffffff;
+    --ink: rgba(0,0,0,0.87);
+    --ink-soft: rgba(0,0,0,0.58);
+    --on-dark: #ffffff;
+    --on-dark-soft: rgba(255,255,255,0.70);
+    --card-shadow: 0 0 0.5px rgba(0,0,0,0.14), 0 1px 1px rgba(0,0,0,0.24);
+    --nav-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 2px 2px rgba(0,0,0,0.06), 0 0 2px rgba(0,0,0,0.07);
+    --radius: 12px;
+    --max: 1120px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+  body {
+    margin: 0; background: var(--cream); color: var(--ink);
+    font-family: "Pretendard", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.6; letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased; word-break: keep-all; overflow-wrap: break-word;
+  }
+  a { color: var(--green-accent); }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+
+  /* 상단 바 */
+  nav.top {
+    position: sticky; top: 0; z-index: 10; background: var(--white); box-shadow: var(--nav-shadow);
+  }
+  nav.top .wrap { display: flex; align-items: center; gap: 24px; height: 68px; }
+  .brand { font-weight: 700; color: var(--green); text-decoration: none; white-space: nowrap; }
+  .brand small { color: var(--ink-soft); font-weight: 500; margin-left: 6px; }
+  nav.top ul { list-style: none; display: flex; gap: 18px; margin: 0 0 0 auto; padding: 0; overflow-x: auto; }
+  nav.top ul a { color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  nav.top ul a:hover { color: var(--green-accent); }
+
+  /* 버튼: 알약 + 누르면 살짝 작아짐 */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 9px 20px; border-radius: 50px;
+    font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid var(--green-accent);
+    transition: all .2s ease; cursor: pointer;
+  }
+  .btn:active { transform: scale(0.95); }
+  .btn.fill { background: var(--green-accent); color: #fff; }
+  .btn.fill:hover { background: var(--green); border-color: var(--green); }
+  .btn.line { background: transparent; color: var(--green-accent); }
+  .btn.line:hover { background: rgba(0,117,74,0.06); }
+  .btn.on-dark { background: #fff; color: var(--green-accent); border-color: #fff; }
+  .btn.on-dark-line { background: transparent; color: #fff; border-color: #fff; }
+  .btn.todo { opacity: .55; pointer-events: none; }
+
+  /* 첫 화면 */
+  header.hero { padding: 72px 0 56px; }
+  .hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; }
+  .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: var(--green-accent); text-transform: uppercase; }
+  h1 { font-size: clamp(32px, 4.6vw, 50px); line-height: 1.2; color: var(--green); margin: 12px 0 18px; font-weight: 700; letter-spacing: -0.02em; }
+  .lead { font-size: 19px; line-height: 1.75; color: var(--ink); margin: 0 0 28px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .hero-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--card-shadow); padding: 28px; }
+  .hero-card h3 { margin: 0 0 4px; font-size: 15px; color: var(--ink-soft); font-weight: 600; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; margin-top: 16px; }
+  .stat b { display: block; font-size: 34px; line-height: 1.1; color: var(--green); font-weight: 700; letter-spacing: -0.02em; }
+  .stat span { font-size: 13px; color: var(--ink-soft); }
+  .hero-card .foot { margin-top: 18px; font-size: 12.5px; color: var(--ink-soft); border-top: 1px solid var(--ceramic); padding-top: 12px; }
+
+  /* 구역 */
+  section { padding: 72px 0; }
+  section.white { background: var(--white); }
+  section.cream { background: var(--cream); }
+  section.dark { background: var(--green-house); color: var(--on-dark); }
+  h2 { font-size: 30px; line-height: 1.3; margin: 8px 0 14px; color: var(--green); font-weight: 700; letter-spacing: -0.02em; }
+  section.dark h2 { color: #fff; }
+  .sub { color: var(--ink-soft); max-width: 760px; margin: 0 0 32px; font-size: 17px; }
+  section.dark .sub { color: var(--on-dark-soft); }
+  section.dark .eyebrow { color: var(--gold); }
+  h3 { font-size: 18px; margin: 0 0 6px; color: var(--ink); }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+  .split > *, .hero-grid > * { min-width: 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .card { background: var(--white); border-radius: var(--radius); box-shadow: var(--card-shadow); padding: 22px; }
+  section.white .card { background: var(--cream); box-shadow: none; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 15px; }
+  .num { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; background: var(--green-accent); color: #fff;
+         align-items: center; justify-content: center; font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  figure { margin: 0; }
+  figure img { border-radius: var(--radius); box-shadow: var(--card-shadow); background: var(--cream); }
+  figcaption { font-size: 13px; color: var(--ink-soft); margin-top: 8px; }
+
+  /* 어두운 띠 안의 목록 */
+  .ix { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .ix div { border: 1px solid rgba(255,255,255,0.16); border-radius: var(--radius); padding: 18px 20px; }
+  .ix b { display: block; color: #fff; font-size: 16px; margin-bottom: 4px; }
+  .ix span { color: var(--on-dark-soft); font-size: 14.5px; }
+
+  /* 표 */
+  .table-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--card-shadow); padding: 8px 24px 16px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 11px 6px; border-bottom: 1px solid #e7e7e7; vertical-align: top; }
+  th { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+  td.v { text-align: right; font-weight: 700; white-space: nowrap; color: var(--ink); }
+  td.v.good { color: var(--green-accent); }
+  tr:last-child td { border-bottom: none; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 13.5px; background: var(--ceramic); padding: 1px 6px; border-radius: 6px; }
+
+  .pill { display: inline-block; padding: 3px 12px; border-radius: 50px; font-size: 12.5px; font-weight: 700; border: 1px solid var(--gold); color: #8a6a2c; background: #faf6ee; }
+  .video { aspect-ratio: 16/9; border-radius: var(--radius); background: var(--green-house); color: var(--on-dark-soft);
+           display: flex; align-items: center; justify-content: center; text-align: center; font-size: 15px; box-shadow: var(--card-shadow); }
+  .video video { width: 100%; height: 100%; border-radius: var(--radius); }
+
+  /* 시행착오 타임라인 */
+  .steps { display: grid; gap: 14px; }
+  .step { display: grid; grid-template-columns: 150px 1fr; gap: 20px; background: var(--white); border-radius: var(--radius); box-shadow: var(--card-shadow); padding: 20px 22px; }
+  .step .tag { font-size: 13px; font-weight: 700; color: var(--green-accent); }
+  .step h3 { margin-bottom: 8px; }
+  .step dl { margin: 0; display: grid; grid-template-columns: 52px 1fr; gap: 4px 10px; font-size: 15px; }
+  .step dt { color: var(--ink-soft); font-weight: 600; }
+  .step dd { margin: 0; }
+
+  .team { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .member { background: var(--white); border-radius: var(--radius); box-shadow: var(--card-shadow); padding: 20px; }
+  .member b { font-size: 17px; color: var(--green); }
+  .member span { display: block; font-size: 13px; color: var(--ink-soft); }
+  .member p { margin: 8px 0 0; font-size: 14.5px; }
+
+  footer { background: var(--green-house); color: var(--on-dark-soft); padding: 48px 0; font-size: 14px; }
+  footer b { color: #fff; }
+  footer a { color: #fff; }
+  footer .links { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 20px; }
+
+  @media (max-width: 860px) {
+    .hero-grid, .split { grid-template-columns: 1fr; }
+    nav.top ul { display: none; }
+    .step { grid-template-columns: 1fr; gap: 6px; }
+    section { padding: 56px 0; }
+    header.hero { padding: 48px 0 40px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="#top">성대역 자율주행<small>13조</small></a>
+    <ul>
+      <li><a href="#road">도로</a></li>
+      <li><a href="#traffic">교통·상호작용</a></li>
+      <li><a href="#av">AV 설계</a></li>
+      <li><a href="#result">결과</a></li>
+      <li><a href="#data">데이터</a></li>
+      <li><a href="#lessons">문제와 해결</a></li>
+      <li><a href="#team">팀</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">자율주행 인공지능 및 제어 · 팀 프로젝트</div>
+      <h1>성균관대역 일대 실제 도로에서<br>스스로 운전하는 자율주행 차량</h1>
+      <p class="lead">성균관대역 사거리부터 율전로 회전교차로, 학교 정문까지 2.8 km를 SUMO로 옮기고,
+        버스·골목 차량·주차 차량이 오가는 교통 속에서 PPO로 학습한 AV가 신호를 지키며 목적지까지 달립니다.</p>
+      <div class="cta-row">
+        <a class="btn fill" href="https://github.com/a01023289522-cmd/autonomous-driving">코드 · GitHub</a>
+        <a class="btn line todo" href="#" title="발표 자료 링크 준비 중">발표 자료 · PDF</a>
+        <a class="btn line todo" href="#" title="데이터셋 링크 준비 중">데이터 · Hugging Face</a>
+      </div>
+    </div>
+    <aside class="hero-card" aria-label="최종 모델 평가 요약">
+      <h3>최종 모델 평가 · 처음 보는 시드 1,000회</h3>
+      <div class="stats">
+        <div class="stat"><b>97.5%</b><span>목적지 완주</span></div>
+        <div class="stat"><b>2.5%</b><span>충돌률 (목표 5% 미만)</span></div>
+        <div class="stat"><b>0회</b><span>빨간불 위반 · 시간초과</span></div>
+        <div class="stat"><b>497초</b><span>완주 시간 중앙값 · 2.79 km</span></div>
+      </div>
+      <div class="foot">충돌률 95% 신뢰구간 1.70–3.66% · 정지선 앞 정지 거리 중앙값 2.43 m</div>
+    </aside>
+  </div>
+</header>
+
+<section class="white" id="road">
+  <div class="wrap">
+    <div class="eyebrow">01 · 도로</div>
+    <h2>왜 성균관대역 일대인가</h2>
+    <p class="sub">짧은 2.8 km 안에 한국 도심에서 운전자가 내리는 판단이 거의 다 들어 있습니다.
+      신호 교차로, 회전교차로, 신호 없는 좌회전, 고가 옆 지상 도로, 버스 정류장 구간이 한 경로에 이어집니다.</p>
+    <div class="split">
+      <figure>
+        <img src="img/route.png" alt="AV 학습 경로 지도: 서부로 남행 출발, 성균관대역 사거리, 올리브영 사거리, 율전로 회전교차로, 서부로와 일월로 교차로, 학교 정문 좌회전을 지나 교내 주차장 도착" loading="lazy">
+        <figcaption>AV 경로 2.79 km (녹색). 검은 점은 신호 교차로 5곳입니다.</figcaption>
+      </figure>
+      <div class="cards" style="grid-template-columns:1fr;">
+        <div class="card"><span class="num">1</span><h3>신호 교차로 5곳</h3>
+          <p>성균관대역 사거리, 지상 서부로, 올리브영 사거리, 서부로×일월로, 학교 정문 좌회전. 빨간불 앞에서 정지선에 맞춰 서야 합니다.</p></div>
+        <div class="card"><span class="num">2</span><h3>고가 옆 지상 도로와 버스 정류장</h3>
+          <p>서부로 고가가 갈라지는 구간에서 지상 1차로로 내려가고, 정류장에 선 버스 뒤에서 기다리거나 지나갑니다.</p></div>
+        <div class="card"><span class="num">3</span><h3>골목 오거리와 율전로 회전교차로</h3>
+          <p>우선순위가 없는 골목 교차로를 지나고, 회전교차로에서는 안에 있는 차에 양보한 뒤 들어갑니다.</p></div>
+        <div class="card"><span class="num">4</span><h3>신호 없는 좌회전</h3>
+          <p>마주 오는 차를 보고 틈이 날 때만 좌회전합니다. 이 프로젝트에서 가장 어려운 지점입니다.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cream" id="sumo">
+  <div class="wrap split">
+    <div>
+      <div class="eyebrow">02 · SUMO 구현</div>
+      <h2>지도와 길찾기로 확인하며 만든 도로망</h2>
+      <p class="sub" style="margin-bottom:16px">OpenStreetMap을 바탕으로, 카카오맵 길찾기·위성사진·로드뷰로 확인한 값을 덧입혔습니다.</p>
+      <ul style="margin:0; padding-left:20px; color:var(--ink-soft)">
+        <li>일방통행과 큰길 차로 수(서부로·덕영대로·일월로 등)를 지도와 대조</li>
+        <li>서부로 고가(+6 m)·지하차도(−6 m)를 층으로 구분하고 고가 밑 공영주차장 3곳 구현</li>
+        <li>실제 버스 노선 17개와 정류장, 사거리 신호 순서(보행자 동시신호 45초 포함)</li>
+        <li>카카오 길찾기 경로와 SUMO 경로를 구간별로 비교해 검증</li>
+      </ul>
+    </div>
+    <figure>
+      <img src="img/sumo_detail.jpg" alt="SUMO 도로망 세부: 고가 구간, 고가 밑 교차로, 주차장, 지상 서부로" loading="lazy">
+      <figcaption>SUMO 세부 화면: 고가 구간, 고가 밑 넓은 교차로, 고가 옆 주차장, 지상 서부로</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="dark" id="traffic">
+  <div class="wrap">
+    <div class="eyebrow">03 · 일반 차량과 상호작용</div>
+    <h2>AV 혼자 달리는 길이 아닙니다</h2>
+    <p class="sub">배경 교통을 600초 먼저 흘려 길에 차가 차 있는 상태에서 AV를 투입합니다.
+      일반 차량(HV)은 SUMO 운전 모델로 움직이고, AV의 판단에 직접 영향을 줍니다.</p>
+    <div class="ix">
+      <div><b>신호 대기열</b><span>빨간불에 선 앞차 뒤에 줄을 서고, 초록불에 앞차를 따라 출발</span></div>
+      <div><b>회전교차로 진입 양보</b><span>교차로 안을 도는 차가 지나갈 때까지 진입로에서 대기</span></div>
+      <div><b>무신호 좌회전</b><span>마주 오는 직진 차의 거리·속도를 보고 틈을 골라 좌회전</span></div>
+      <div><b>버스 정류장</b><span>정류장에 선 버스 뒤 대기, 출발하는 버스와의 간격 유지</span></div>
+      <div><b>골목 합류 차량</b><span>골목에서 나오는 차와 교차로에서 엇갈림</span></div>
+      <div><b>주차·출차 차량</b><span>고가 옆 공영주차장과 교내 주차장을 드나드는 차</span></div>
+    </div>
+    <div class="cta-row" style="margin-top:28px">
+      <a class="btn on-dark" href="#result">주행 결과 보기</a>
+      <a class="btn on-dark-line" href="#video">주행 영상 보기</a>
+    </div>
+  </div>
+</section>
+
+<section class="white" id="av">
+  <div class="wrap">
+    <div class="eyebrow">04 · AV 설계</div>
+    <h2>무엇을 보고, 어떻게 움직이고, 무엇을 배우나</h2>
+    <p class="sub">수업 PPO 코드를 그대로 쓰고, 성대역 도로에 맞게 관측과 보상을 늘렸습니다.
+      규칙 기반 보조나 차선 지시는 쓰지 않습니다. 길찾기 수준의 경로 정보만 줍니다.</p>
+    <div class="cards">
+      <div class="card"><h3>Observation · 45차원</h3>
+        <p>수업 기본 관측 31차원(내 속도·차로·주변 차량) + 다음 신호(거리, 빨강·노랑, 남은 시간) + 다음 교차로(거리, 양보 여부, 우선 차량 접근) + 제한 속도 + 앞차·정지선까지 가까움과 필요한 감속</p></div>
+      <div class="card"><h3>Action · 2개</h3>
+        <p>가감속 1개(연속값)와 차선 변경 1개(왼쪽·유지·오른쪽). 속도 제어는 SUMO 안전장치 없이(speedMode 0) AV가 직접 합니다.</p></div>
+      <div class="card"><h3>Reward</h3>
+        <p>목표 속도 주행 보상, 충돌 −5, 빨간불 진입 −30, 과속 감점, 앞차·정지선과의 목표 간격(너무 가깝거나 너무 멀면 감점), 양보 위반·꼬리물기 감점</p></div>
+      <div class="card"><h3>학습</h3>
+        <p>PPO(hybrid 정책: 가감속은 정규분포, 차선은 범주형), 학습률 1e-4, n_steps 2048. 학습 시드 500개에서 출발점·교통을 섞어 학습하고, 평가는 처음 보는 시드로만 합니다.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="cream" id="result">
+  <div class="wrap">
+    <div class="eyebrow">05 · 결과</div>
+    <h2>처음 보는 교통 1,000번 주행</h2>
+    <p class="sub">학습에 쓰지 않은 시드 2000–2999에서 한 번씩, 모두 1,000번 출발부터 교내 주차장까지 달린 결과입니다.</p>
+    <div class="split">
+      <div class="table-card">
+        <table>
+          <thead><tr><th>지표</th><th style="text-align:right">최종 모델</th></tr></thead>
+          <tbody>
+            <tr><td>완주</td><td class="v good">975/1000 (97.50%)</td></tr>
+            <tr><td>충돌</td><td class="v good">25/1000 (2.50%)</td></tr>
+            <tr><td>충돌률 95% 구간</td><td class="v">1.70–3.66%</td></tr>
+            <tr><td>시간초과</td><td class="v">0/1000</td></tr>
+            <tr><td>빨간불 위반 에피소드</td><td class="v good">0/1000</td></tr>
+            <tr><td>신호 정차 표본</td><td class="v">1,677회</td></tr>
+            <tr><td>정지선까지 거리 중앙값</td><td class="v">2.43 m</td></tr>
+            <tr><td>정지한 앞차와의 간격 중앙값</td><td class="v">9.79 m (51회)</td></tr>
+            <tr><td>정지한 앞차와 5 m 이내</td><td class="v">0/51회</td></tr>
+            <tr><td>급제동 횟수 (≤ −3 m/s²)</td><td class="v">6,407회</td></tr>
+            <tr><td>급제동 횟수 / 100 km</td><td class="v">233.39회</td></tr>
+            <tr><td>완주 시간 중앙값</td><td class="v">497초</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="video">
+        <div class="video">
+          <!-- 주행 영상(30초 이상) 파일을 video/drive.mp4로 넣고 아래 줄의 주석을 풀면 됩니다 -->
+          <!-- <video src="video/drive.mp4" controls playsinline poster="img/route.png"></video> -->
+          <span>주행 영상 준비 중<br><small>도로 구조 · 일반 차량 · AV · 목적지 도착</small></span>
+        </div>
+        <p style="font-size:14px;color:var(--ink-soft);margin-top:14px">충돌 25건 중 15건은 신호 없는 좌회전 지점(:495951808)에서 일어났습니다.
+          마주 오는 차와의 틈 판단이 남은 과제입니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="white" id="data">
+  <div class="wrap">
+    <div class="eyebrow">06 · 데이터</div>
+    <h2>약 1,000만 transition 주행 데이터</h2>
+    <p class="sub">최종 모델로 무작위 시드 10,200개를 한 번씩 주행하며 0.5초마다 기록합니다 (수집 중).
+      학습·평가 시드와 겹치지 않게 뽑았고, 수업 <code>collect_pomdp_data.py</code> 형식을 그대로 따릅니다.</p>
+    <div class="split">
+      <div class="table-card">
+        <table>
+          <thead><tr><th>칼럼</th><th>내용</th></tr></thead>
+          <tbody>
+            <tr><td><code>episode</code>, <code>t</code></td><td>에피소드 번호, 에피소드 안 스텝</td></tr>
+            <tr><td><code>observation</code></td><td>AV가 받은 부분 관측 (45차원)</td></tr>
+            <tr><td><code>action_raw</code>, <code>action.*</code></td><td>정책 출력 [가감속, 차선], 실제 적용된 차선 변경</td></tr>
+            <tr><td><code>reward</code></td><td>그 스텝의 보상</td></tr>
+            <tr><td><code>terminated</code>, <code>truncated</code></td><td>충돌·도착 종료 / 시간 제한 종료</td></tr>
+            <tr><td><code>state</code></td><td>SUMO 내부 상태 (위치·속도·차로 등, 관측에는 쓰지 않음)</td></tr>
+            <tr><td><code>detected_vehicles</code></td><td>관측 시점에 감지된 주변 차량</td></tr>
+            <tr><td><code>event.*</code></td><td>충돌, 도착, 차로 변경 전후</td></tr>
+            <tr><td><code>next_observation</code>, <code>next_state</code></td><td>다음 관측·상태 (에피소드 끝에만 직접 기록)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cards" style="grid-template-columns:1fr;">
+        <div class="card"><h3>규모</h3><p>10,200 에피소드 × 약 1,000 스텝 ≈ 1,000만 transition. 20 에피소드씩 <code>.jsonl.gz</code>(전체)와 <code>.npz</code>(학습용)로 저장</p></div>
+        <div class="card"><h3>조건</h3><p>평가와 같은 전체 경로·기본 교통, 결정적 정책(평균 행동), 배경 교통 600초 뒤 투입</p></div>
+        <div class="card"><h3>받기</h3><p><span class="pill">Hugging Face</span> 링크 준비 중</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cream" id="lessons">
+  <div class="wrap">
+    <div class="eyebrow">07 · 문제와 해결</div>
+    <h2>부딪힌 문제와 푼 방법</h2>
+    <p class="sub">모든 수치는 학습에 쓰지 않은 시드로 잰 값입니다.</p>
+    <div class="steps">
+      <div class="step"><div class="tag">관측 규정</div><div><h3>빨간불을 '가상의 정지 차량'으로 보여 주던 관측을 뺐다</h3>
+        <dl><dt>문제</dt><dd>컨설팅에서 관측 가공이 금지됐고, 이를 끄자 빨간불 위반이 200회 중 465회로 늘었다.</dd>
+            <dt>원인</dt><dd>정지선에서 멀리 서 있을 때 스텝마다 쌓이는 감점이 빨간불 벌점(−5)보다 커서, 신호를 넘는 편이 유리했다.</dd>
+            <dt>해결</dt><dd>빨간불 정지선에는 그 감점을 끄고 벌점을 −30으로 올렸다 → 빨간불 위반 0회, 정지선 2.4 m.</dd></dl></div></div>
+      <div class="step"><div class="tag">대기열 간격</div><div><h3>앞차 뒤에서 너무 멀리 서는 문제</h3>
+        <dl><dt>문제</dt><dd>신호 대기열에서 앞차와 9.8 m 떨어져 섰다.</dd>
+            <dt>시도</dt><dd>학습에만 신호 대기열 교통을 추가했다 → 간격 8.7 m로 줄었다. 그러나 더 학습하면 같은 '다가가기' 습관이 정지선에도 번져 선을 몇 cm 넘었다.</dd>
+            <dt>결정</dt><dd>간격과 안전이 맞바꿈 관계였다. 충돌률이 낮은 모델을 최종으로 골랐다.</dd></dl></div></div>
+      <div class="step"><div class="tag">평가 방법</div><div><h3>운 좋은 시드에 속지 않기</h3>
+        <dl><dt>문제</dt><dd>200회 평가에서 좋던 모델이 새 시드에서 충돌률이 다르게 나왔다.</dd>
+            <dt>해결</dt><dd>최종 비교는 처음 보는 시드 1,000회로 하고, 충돌률은 95% 신뢰구간과 함께 보고한다.</dd></dl></div></div>
+      <div class="step"><div class="tag">데이터</div><div><h3>같은 데이터가 반복되지 않게</h3>
+        <dl><dt>문제</dt><dd>정책과 교통이 시드마다 정해져 있어, 같은 시드를 다시 돌리면 똑같은 데이터가 쌓인다.</dd>
+            <dt>해결</dt><dd>시드 10,200개를 무작위로 겹치지 않게 뽑고, 학습·평가 시드는 뺐다.</dd></dl></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="white" id="team">
+  <div class="wrap">
+    <div class="eyebrow">08 · 팀</div>
+    <h2>13조</h2>
+    <div class="team">
+      <div class="member"><b>박준수</b><span>a01023289522-cmd</span><p>담당 작성 필요</p></div>
+      <div class="member"><b>최민기</b><span>mingi-eee</span><p>담당 작성 필요</p></div>
+      <div class="member"><b>임재성</b><span>imjaeseong970-cpu</span><p>담당 작성 필요</p></div>
+      <div class="member"><b>임수진</b><span>sUUjin-L</span><p>담당 작성 필요</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <b>성대역 자율주행 · 13조</b> — 자율주행 인공지능 및 제어 팀 프로젝트
+    <div class="links">
+      <a class="btn on-dark" href="https://github.com/a01023289522-cmd/autonomous-driving">코드 · GitHub</a>
+      <a class="btn on-dark-line todo" href="#">발표 자료 · PDF</a>
+      <a class="btn on-dark-line todo" href="#">데이터 · Hugging Face</a>
+    </div>
+    수업 코드: <a href="https://github.com/bmil-ssu/Artificial-Intelligence-and-Control-for-Autonomous-Driving">bmil-ssu/Artificial-Intelligence-and-Control-for-Autonomous-Driving</a>
+  </div>
+</footer>
+
+</body>
+</html>
